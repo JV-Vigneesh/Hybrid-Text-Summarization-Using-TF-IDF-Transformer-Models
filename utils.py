@@ -69,6 +69,23 @@ def normalize_text(text):
     return text.strip()
 
 
+
+def normalize_output(text):
+    import re
+
+    # remove space before punctuation
+    text = re.sub(r'\s+([.,!?])', r'\1', text)
+
+    # fix hyphen spacing
+    text = re.sub(r'\s*-\s*', '-', text)
+
+    # remove trailing broken sentence
+    if not text.endswith(('.', '!', '?')):
+        text = text.rsplit(' ', 1)[0]
+
+    return text.strip()
+
+
 # -----------------------------
 # Preprocess
 # -----------------------------
@@ -107,7 +124,16 @@ def tfidf_summary(text):
         return "No meaningful textual content found."
 
     ranked = rank_sentences_tfidf(sentences)
-    return " ".join([s for _, s in ranked[:5]])
+    cleaned = []
+    for _, s in ranked[:5]:
+        s = re.sub(r'\(.*?\)', '', s)  # remove (class content)
+        s = s.strip()
+        cleaned.append(s)
+
+    summary = " ".join(cleaned)
+    summary = re.sub(r'\s+([.,!?])', r'\1', summary)
+    return normalize_output(summary)
+
 
 
 # -----------------------------
@@ -129,6 +155,8 @@ def key_points(text):
 
         if not s.endswith('.'):
             s += '.'
+
+        s = normalize_output(s)
 
         points.append(s)
 
@@ -185,8 +213,17 @@ def clean_and_format(text):
 
         cleaned.append(s)
 
-    return " ".join(cleaned)
+    text = " ".join(cleaned)
 
+    text = re.sub(r'\s+([.,!?])', r'\1', text)
+    text = re.sub(r'\s+-\s+', '-', text)  # fix part -of-speech
+
+    return text
+
+def fix_incomplete_sentence(text):
+    if not text.endswith(('.', '!', '?')):
+        text = text.rsplit(' ', 1)[0]
+    return text
 
 # -----------------------------
 # BART
@@ -209,8 +246,8 @@ def bart_summary(text):
     for chunk in chunks:
         input_len = len(chunk.split())
 
-        max_len = max(50, min(int(input_len * 0.7), 180))
-        min_len = max(30, int(max_len * 0.6))
+        max_len = max(80, min(int(input_len * 0.8), 220))
+        min_len = max(50, int(max_len * 0.7))
 
         result = summarizer(
             chunk,
@@ -226,7 +263,8 @@ def bart_summary(text):
 
     final = remove_redundancy(combined)
     final = clean_and_format(final)
-
+    final = fix_incomplete_sentence(final)
+    final = normalize_output(final)
     return final
 
 
@@ -245,11 +283,10 @@ def hybrid_summary(text):
     ranked = rank_sentences_tfidf(sentences)
 
     # take more sentences to avoid missing concepts
-    extracted = " ".join([s for _, s in ranked[:7]])
+    extracted = " ".join([s for _, s in ranked[:10]])
 
     summary = bart_summary(extracted)
-
-    return summary
+    return normalize_output(summary)
 
 
 # -----------------------------
