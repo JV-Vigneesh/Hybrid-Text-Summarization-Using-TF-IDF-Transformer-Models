@@ -9,3 +9,5 @@ huggingface-hub==0.19.4
 rouge-score
 PyPDF2
 python-docx
+
+bert-score

@@ -1,23 +1,33 @@
 import nltk
 import numpy as np
 import re
+import torch
 from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers import pipeline
 from rouge_score import rouge_scorer
 from sentence_transformers import SentenceTransformer, util
+from bert_score import score as bertscore
 
 nltk.download('punkt')
 
 # -----------------------------
 # Models
 # -----------------------------
+device = 0 if torch.cuda.is_available() else -1
+
+MODEL_NAME = "sshleifer/distilbart-cnn-12-6"
+# MODEL_NAME = "facebook/bart-large-cnn"
+
 summarizer = pipeline(
     "summarization",
-    model="sshleifer/distilbart-cnn-12-6",
-    device=-1
+    model=MODEL_NAME,
+    device=device
 )
 
-embedder = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+embedder = SentenceTransformer(
+    'all-MiniLM-L6-v2',
+    device='cuda' if torch.cuda.is_available() else 'cpu'
+)
 
 
 # -----------------------------
@@ -132,6 +142,10 @@ def tfidf_summary(text):
 
     summary = " ".join(cleaned)
     summary = re.sub(r'\s+([.,!?])', r'\1', summary)
+    summary = re.sub(r'[^A-Za-z0-9.,!? ]+', '', summary)
+
+    summary = summary.replace("..", ".")
+
     return normalize_output(summary)
 
 
@@ -148,7 +162,7 @@ def key_points(text):
         s = re.sub(r'\(.*?\)', '', s)   # remove brackets like (class content)
         s = s.strip()
 
-        if len(s.split()) < 5:
+        if len(s.split()) > 20:
             continue
 
         s = s.capitalize()
@@ -265,6 +279,9 @@ def bart_summary(text):
     final = clean_and_format(final)
     final = fix_incomplete_sentence(final)
     final = normalize_output(final)
+
+    final = final.replace(" ,", ",").replace(" .", ".")
+
     return final
 
 
@@ -317,3 +334,8 @@ def is_valid_text(text):
         return False
 
     return True
+
+
+def compute_bertscore(reference, generated):
+    P, R, F1 = bertscore([generated], [reference], lang="en", verbose=False)
+    return round(F1.mean().item(), 4)

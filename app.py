@@ -8,6 +8,9 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+def limit_text_safely(text, max_words=2000):
+    words = text.split()
+    return " ".join(words[:max_words])
 
 # -----------------------------
 # Extract file text
@@ -36,9 +39,6 @@ def extract_text(file):
         print("File read error:", e)
         return ""
 
-    # ✅ SAFE LIMIT (only after text exists)
-    if text:
-        text = text[:5000]
 
     return text.strip()
 
@@ -61,7 +61,7 @@ def index():
 
             # limit size
             if text:
-                text = text[:3000]
+                text = limit_text_safely(text)
 
             if not text:
                 result = {"hybrid": "No readable text found."}
@@ -90,13 +90,25 @@ def index():
 
                 original_len = len(text.split())
                 summary_len = len(hybrid.split())
-                reduction = round((1 - summary_len / original_len) * 100, 2)
+                if original_len > 0:
+                    reduction = round((1 - summary_len / original_len) * 100, 2)
+                else:
+                    reduction = 0
 
-                rouge_scores = {
+                scores = {
                     "TF-IDF": compute_rouge(text, tfidf),
                     "BART": compute_rouge(text, bart),
                     "HYBRID": compute_rouge(text, hybrid)
                 }
+
+                try:
+                    berts = {
+                        "TF-IDF": compute_bertscore(text, tfidf),
+                        "BART": compute_bertscore(text, bart),
+                        "HYBRID": compute_bertscore(text, hybrid)
+                    }
+                except:
+                    berts = {"TF-IDF": 0, "BART": 0, "HYBRID": 0}
 
                 result = {
                     "tfidf": tfidf,
@@ -106,7 +118,8 @@ def index():
                     "original_len": original_len,
                     "summary_len": summary_len,
                     "reduction": reduction,
-                    "rouge": rouge_scores
+                    "rouge": scores,
+                    "bertscore": berts
                 }
 
         except Exception as e:
@@ -126,7 +139,7 @@ def index():
 def download():
     summary = request.form.get("summary")
 
-    path = "summary.txt"
+    path = f"summary_{os.getpid()}.txt"
     with open(path, "w", encoding="utf-8") as f:
         f.write(summary)
 
