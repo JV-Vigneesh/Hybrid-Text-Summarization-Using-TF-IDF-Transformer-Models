@@ -117,9 +117,9 @@ def rank_sentences_tfidf(sentences):
         return []
 
     try:
-        vectorizer = TfidfVectorizer(stop_words='english')
+        vectorizer = TfidfVectorizer(stop_words=None)
         tfidf = vectorizer.fit_transform(sentences)
-        scores = np.array(tfidf.sum(axis=1)).flatten()
+        scores = np.array(tfidf.mean(axis=1)).flatten()
 
         return sorted(((scores[i], s) for i, s in enumerate(sentences)), reverse=True)
 
@@ -135,7 +135,7 @@ def tfidf_summary(text):
 
     ranked = rank_sentences_tfidf(sentences)
     cleaned = []
-    for _, s in ranked[:5]:
+    for _, s in ranked[:10]:
         s = re.sub(r'\(.*?\)', '', s)  # remove (class content)
         s = s.strip()
         cleaned.append(s)
@@ -260,8 +260,8 @@ def bart_summary(text):
     for chunk in chunks:
         input_len = len(chunk.split())
 
-        max_len = max(80, min(int(input_len * 0.8), 220))
-        min_len = max(50, int(max_len * 0.7))
+        max_len = min(int(input_len * 0.9), 350)
+        min_len = max(80, int(max_len * 0.6))
 
         result = summarizer(
             chunk,
@@ -300,7 +300,12 @@ def hybrid_summary(text):
     ranked = rank_sentences_tfidf(sentences)
 
     # take more sentences to avoid missing concepts
-    extracted = " ".join([s for _, s in ranked[:10]])
+    top_sentences = [s for _, s in ranked[:40]]
+
+    # restore original order
+    ordered = [s for s in sentences if s in top_sentences]
+
+    extracted = " ".join(ordered)
 
     summary = bart_summary(extracted)
     return normalize_output(summary)
